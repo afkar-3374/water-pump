@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Ultrasonic Sensor Dashboard</title>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Roboto', sans-serif; background: #f4f7fc; text-align: center; padding: 40px; }
+    h1 { color: #333; }
+    .status { display: inline-block; padding: 8px 15px; border-radius: 12px; font-size: 14px; font-weight: bold; margin-bottom: 20px; }
+    .connected { background-color: #28a745; color: white; }
+    .disconnected { background-color: #dc3545; color: white; }
+    .card { background: white; padding: 30px; margin: 20px auto; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); width: 300px; }
+    .distance-value { font-size: 48px; color: #007bff; font-weight: bold; }
+    .btn { padding: 15px 30px; border: none; border-radius: 8px; cursor: pointer; font-size: 16px; margin-top: 20px; }
+    .btn-on { background: #28a745; color: white; }
+    .btn-off { background: #dc3545; color: white; }
+  </style>
+</head>
+<body>
+  <h1>Ultrasonic Distance Monitor</h1>
+  <div id="status" class="status disconnected">Disconnected</div>
+
+  <div class="card">
+    <p>Distance</p>
+    <div class="distance-value" id="distance">-- cm</div>
+    <button class="btn btn-on" id="pumpBtn">Turn Pump ON</button>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.1.0/mqttws31.min.js"></script>
+  <script>
+    let pumpState = false;
+    const statusEl = document.getElementById("status");
+    const btn = document.getElementById("pumpBtn");
+
+    function updateStatus(connected) {
+      statusEl.textContent = connected ? "Connected" : "Disconnected";
+      statusEl.className = connected ? "status connected" : "status disconnected";
+    }
+
+    const client = new Paho.MQTT.Client("broker.hivemq.com", Number(8884), "/mqtt", "webClient" + Math.random());
+
+    client.onConnectionLost = function() {
+      updateStatus(false);
+      setTimeout(connectMQTT, 3000);
+    };
+
+    client.onMessageArrived = function(message) {
+      if (message.destinationName === "test/ultrasonic/distance") {
+        document.getElementById("distance").innerText = message.payloadString + " cm";
+      }
+      if (message.destinationName === "test/ultrasonic/pump") {
+        pumpState = (message.payloadString === "ON");
+        btn.innerText = pumpState ? "Turn Pump OFF" : "Turn Pump ON";
+        btn.className = pumpState ? "btn btn-off" : "btn btn-on";
+      }
+    };
+
+    function connectMQTT() {
+      client.connect({
+        useSSL: true,
+        onSuccess: function() {
+          updateStatus(true);
+          client.subscribe("test/ultrasonic/distance");
+          client.subscribe("test/ultrasonic/pump");
+        },
+        onFailure: function() {
+          updateStatus(false);
+          setTimeout(connectMQTT, 3000);
+        }
+      });
+    }
+
+    btn.addEventListener("click", function() {
+      pumpState = !pumpState;
+      let msg = new Paho.MQTT.Message(pumpState ? "ON" : "OFF");
+      msg.destinationName = "test/ultrasonic/pump";
+      if (client.isConnected()) {
+        client.send(msg);
+      }
+    });
+
+    connectMQTT();
+  </script>
+</body>
+</html>
